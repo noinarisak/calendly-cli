@@ -20,6 +20,7 @@ schedule_range = 14
 total_slots = 5
 slots_per_day = 2
 events_to_schedule = 3
+after_hour = 12 + 5
 
 selected_event = next((event for event in all_events if event['duration'] == duration and event['active'] is True), None)
 
@@ -64,18 +65,25 @@ def get_event_slots(event_id, range_in_days: int):
     last_spot = None
 
     for spot in day['spots'][:]:
-      if not last_spot:
-        last_spot = spot
-        continue
-
       if spot['status'] != 'available':
         day['spots'].remove(spot)
         continue
 
+      spot_start_time = datetime.datetime.fromisoformat(spot['start_time'])
+      if spot_start_time.hour < after_hour:
+        # TODO should add logging for this
+        day['spots'].remove(spot)
+        continue
+
+      if not last_spot:
+        last_spot = spot
+        continue
+
+
       last_start_time = datetime.datetime.fromisoformat(last_spot['start_time'])
       last_end_time = last_start_time + datetime.timedelta(minutes=duration)
 
-      if datetime.datetime.fromisoformat(spot['start_time']) < last_end_time:
+      if spot_start_time < last_end_time:
         day['spots'].remove(spot)
       else:
         last_spot = spot
@@ -88,17 +96,18 @@ def get_event_slots(event_id, range_in_days: int):
 def human_readable_slot(slot):
   # target format: Jan 10th, 7:30pm MT
 
-  # easiest way to get the am/pm to lowercase
-  # https://stackoverflow.com/questions/38863210/how-to-make-pythons-datetime-object-show-am-and-pm-in-lowercase/38863352
-  import locale
-  locale.setlocale(locale.LC_ALL, 'de_DE')
-
   start_time = datetime.datetime.fromisoformat(slot['start_time'])
 
   # https://stackoverflow.com/questions/31299580/python-print-the-time-zone-from-strftime
-  timezone_identifier = start_time.astimezone().tzname()
+  # also, I hate MST vs MT which is why I'm converint ST => T
+  timezone_identifier = start_time.astimezone().tzname().replace("ST", "T")
 
   start_time_str = start_time.strftime("%b %-d, %-I:%M%p")
+
+  # easiest way to get the am/pm to lowercase is to set the locale to de_DE, but this also messes with month formatting
+  # https://stackoverflow.com/questions/38863210/how-to-make-pythons-datetime-object-show-am-and-pm-in-lowercase/38863352
+  start_time_str = start_time_str.replace("AM", "am").replace("PM", "pm")
+
   return f"{start_time_str} {timezone_identifier}"
 
 
