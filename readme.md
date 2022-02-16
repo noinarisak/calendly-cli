@@ -14,7 +14,10 @@ The solution? A CLI tool to spit out a bunch of open times in my calendar.
 
 There are some specific features I wanted:
 
-*
+* Exclude weekend times
+* Easily select times in a different timezone
+* Command line interface so I can easily connect to Alfred/Raycast
+* Pick a "nice" list of times: semi-randomized, across multiple days, etc to allow the receiver to have a nice array of options
 
 ## Usage
 
