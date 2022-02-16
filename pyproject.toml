@@ -9,6 +9,7 @@ python = "^3.8"
 click = "^8.0.3"
 PyCalendly = "^1.0.0"
 python-dotenv = "^0.19.2"
+pytz = "^2021.3"
 
 [tool.poetry.dev-dependencies]
 ipython = "^8.0.1"
@@ -24,3 +25,11 @@ docrepr = "^0.2.0"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length=150
+target-version=['py39']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
