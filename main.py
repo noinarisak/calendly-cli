@@ -1,5 +1,4 @@
 import datetime
-import os
 import random
 import typing as t
 
@@ -8,6 +7,14 @@ from calendly import Calendly
 
 calendly = None
 calendly_user_uri = None
+
+NICE_TO_UGLY_TIMEZONE_MAPPING = {
+    "CST": "CST6CDT",
+    "PST": "PST8PDT",
+}
+
+# https://stackoverflow.com/questions/483666/reverse-invert-a-dictionary-mapping
+UGLY_TO_NICE_TIMEZONE_MAPPING = dict((v, k) for k, v in NICE_TO_UGLY_TIMEZONE_MAPPING.items())
 
 
 def event_id_with_duration(duration: int) -> str:
@@ -28,6 +35,7 @@ def get_event_slots(event_id, range_in_days: int, duration: int, target_timezone
     end_day = (datetime.datetime.now() + datetime.timedelta(days=range_in_days)).strftime("%Y-%m-%d")
 
     result = requests.get(
+        # private API which gives us the schedule
         f"https://calendly.com/api/booking/event_types/{event_id}/calendar/range?timezone={target_timezone}&diagnostics=false&range_start={start_day}&range_end={end_day}"
     )
 
@@ -35,6 +43,7 @@ def get_event_slots(event_id, range_in_days: int, duration: int, target_timezone
         print("Error fetching slots")
         return []
 
+    # structure of the response:
     # {
     #   'invitee_publisher_error': False,
     #   'today': '2022-02-15',
@@ -64,8 +73,15 @@ def get_event_slots(event_id, range_in_days: int, duration: int, target_timezone
                 continue
 
             spot_start_time = datetime.datetime.fromisoformat(spot["start_time"])
+
             if after_hour is not None and spot_start_time.hour <= after_hour:
                 # TODO should add logging for this
+                day["spots"].remove(spot)
+                continue
+
+            # remove weekend dates. I leave some weekend slots on my calendly, but I don't want to send
+            # these to folks I'm emailing.
+            if spot_start_time.weekday() >= 5:
                 day["spots"].remove(spot)
                 continue
 
@@ -87,16 +103,39 @@ def get_event_slots(event_id, range_in_days: int, duration: int, target_timezone
     return available_days
 
 
-def human_readable_slot(slot):
-    # target format: Jan 10th, 7:30pm MT
+def timezones_for_offset(offset):
+    import pytz
 
-    start_time = datetime.datetime.fromisoformat(slot["start_time"])
+    utc_offset = datetime.timedelta(hours=offset, minutes=0)
+    now = datetime.datetime.now(pytz.utc)
 
-    # TODO need to inherit the timezone from the event
+    return [tz.zone for tz in map(pytz.timezone, pytz.all_timezones_set) if now.astimezone(tz).utcoffset() == utc_offset]
+
+
+# extracting a TZ identifier from an offset is hard. They aren't standardized and it's a one-to-many mapping
+# https://stackoverflow.com/questions/35085289/getting-timezone-name-from-utc-offset
+def human_timezone_for_offset(time: datetime.datetime) -> str:
+    # TODO there has got to be a better way to do this, seems insane there isn't a package or builtin for this
+    timezone_offset = -int(24 - time.utcoffset().seconds / 3600)
+    timezone_names = timezones_for_offset(timezone_offset)
+    timezone_names = sorted(timezone_names, key=lambda x: len(x))
+
+    timezone_identifier = timezone_names[0]
+
+    timezone_identifier = UGLY_TO_NICE_TIMEZONE_MAPPING.get(timezone_identifier, timezone_identifier)
 
     # https://stackoverflow.com/questions/31299580/python-print-the-time-zone-from-strftime
     # also, I hate MST vs MT which is why I'm converint ST => T
-    timezone_identifier = start_time.astimezone().tzname().replace("ST", "T")
+    timezone_identifier = timezone_identifier.replace("ST", "T")
+
+    return timezone_identifier
+
+
+def human_readable_slot(slot: dict) -> str:
+    # target format: Jan 10th, 7:30pm MT
+
+    start_time = datetime.datetime.fromisoformat(slot["start_time"])
+    timezone_identifier = human_timezone_for_offset(start_time)
 
     start_time_str = start_time.strftime("%b %-d, %-I:%M%p")
 
@@ -107,25 +146,14 @@ def human_readable_slot(slot):
     return f"{start_time_str} {timezone_identifier}"
 
 
-# duration = 30
-# schedule_range = 25
-
-# total_slots = 20
-# slots_per_day = 2
-# events_to_schedule = 1
-# # after_hour = 12 + 5
-# after_hour = None
-# target_timezone = "EST"
-# # target_timezone = "America/Denver"
-
-# TODO option to exclude weekends
-
-
-def calendly_times(duration, days, timezone, after_hour, total, events, slots_per_day, api_key):
+def calendly_times(duration, days, timezone, after_hour, total, events, slots_per_day, api_key) -> str:
+    # TODO not awesome, but this is a quick script and I'm getting lazy
     global calendly
     global calendly_user_uri
 
-    calendly = Calendly(os.getenv("CALENDLY_API_KEY"))
+    calendly = Calendly(api_key)
+
+    # weirdly enough, we need the URI (not UID) for the user in order to use the calendly API
     calendly_user = calendly.about()
     calendly_user_uri = calendly_user["resource"]["uri"]
 
@@ -134,10 +162,13 @@ def calendly_times(duration, days, timezone, after_hour, total, events, slots_pe
     number_of_events_to_schedule = events
     number_of_slots_per_event = total
 
+    # not sure why, but "PST" & "CST" are not a valid timezone identifiers either in calendly or python
+    timezone = NICE_TO_UGLY_TIMEZONE_MAPPINGg.get(timezone, timezone)
+
     event_id = event_id_with_duration(duration)
     available_days = get_event_slots(event_id, schedule_range_in_days, duration, timezone, after_hour)
 
-    chosen_slots_by_events = []
+    chosen_slots_by_events: t.List[t.List[dict]] = []
     output = ""
 
     for _ in range(number_of_events_to_schedule):
@@ -152,7 +183,9 @@ def calendly_times(duration, days, timezone, after_hour, total, events, slots_pe
         chosen_slots_by_events.append(slots_for_event)
 
     for event_slots in chosen_slots_by_events:
+        # sort selected slots by time; they were randomized earlier
         for slot in sorted(event_slots, key=lambda slot: slot["start_time"]):
+            # target format: "- Jan 5, 5:30pm MT"
             output += f"- {human_readable_slot(slot)}\n"
 
         output += "\n"

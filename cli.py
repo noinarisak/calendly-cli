@@ -8,7 +8,7 @@ import main
 load_dotenv()
 
 
-@click.command(short_help="Generate time options based off of a calendly account")
+@click.command(help="Generate time options based off of a calendly account")
 @click.option("--duration", default=30, help="Number of minutes to schedule", show_default=True, type=int)
 @click.option("--days", default=30, help="Number of days in advance to pick from", show_default=True, type=int)
 @click.option("--timezone", default="America/Denver", help="Default timezone to pick times from", show_default=True, type=str)
