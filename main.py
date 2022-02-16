@@ -15,12 +15,16 @@ user_uri = user['resource']['uri']
 all_events = calendly.event_types(user=user_uri)['collection']
 
 duration = 30
-schedule_range = 14
+schedule_range = 25
 
-total_slots = 5
+total_slots = 20
 slots_per_day = 2
-events_to_schedule = 3
-after_hour = 12 + 5
+events_to_schedule = 1
+# after_hour = 12 + 5
+after_hour = None
+target_timezone = "EST"
+# target_timezone = "America/Denver"
+# TODO option to exclude weekends
 
 selected_event = next((event for event in all_events if event['duration'] == duration and event['active'] is True), None)
 
@@ -35,7 +39,7 @@ def get_event_slots(event_id, range_in_days: int):
   start_day = datetime.datetime.now().strftime("%Y-%m-%d")
   end_day = (datetime.datetime.now() + datetime.timedelta(days=range_in_days)).strftime("%Y-%m-%d")
 
-  result = requests.get(f"https://calendly.com/api/booking/event_types/{event_id}/calendar/range?timezone=America%2FDenver&diagnostics=false&range_start={start_day}&range_end={end_day}")
+  result = requests.get(f"https://calendly.com/api/booking/event_types/{event_id}/calendar/range?timezone={target_timezone}&diagnostics=false&range_start={start_day}&range_end={end_day}")
 
   if result.status_code != 200:
     print("Error fetching slots")
@@ -70,7 +74,7 @@ def get_event_slots(event_id, range_in_days: int):
         continue
 
       spot_start_time = datetime.datetime.fromisoformat(spot['start_time'])
-      if spot_start_time.hour < after_hour:
+      if after_hour is not None and spot_start_time.hour <= after_hour:
         # TODO should add logging for this
         day['spots'].remove(spot)
         continue
@@ -97,6 +101,8 @@ def human_readable_slot(slot):
   # target format: Jan 10th, 7:30pm MT
 
   start_time = datetime.datetime.fromisoformat(slot['start_time'])
+
+  # TODO need to inherit the timezone from the event
 
   # https://stackoverflow.com/questions/31299580/python-print-the-time-zone-from-strftime
   # also, I hate MST vs MT which is why I'm converint ST => T
