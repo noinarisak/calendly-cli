@@ -1,43 +1,29 @@
 import datetime
 import os
 import random
+import typing as t
 
 import requests
 from calendly import Calendly
-from dotenv import load_dotenv
 
-load_dotenv()
-
-calendly = Calendly(os.getenv("CALENDLY_API_KEY"))
-
-user = calendly.about()
-user_uri = user["resource"]["uri"]
-
-all_events = calendly.event_types(user=user_uri)["collection"]
-
-duration = 30
-schedule_range = 25
-
-total_slots = 20
-slots_per_day = 2
-events_to_schedule = 1
-# after_hour = 12 + 5
-after_hour = None
-target_timezone = "EST"
-# target_timezone = "America/Denver"
-# TODO option to exclude weekends
-
-selected_event = next((event for event in all_events if event["duration"] == duration and event["active"] is True), None)
-
-if not selected_event:
-    print("No event found for duration")
-    exit(1)
-
-event_uri = selected_event["uri"]
-event_id = event_uri.split("/")[-1]
+calendly = None
+calendly_user_uri = None
 
 
-def get_event_slots(event_id, range_in_days: int):
+def event_id_with_duration(duration: int) -> str:
+    all_events = calendly.event_types(user=calendly_user_uri)["collection"]
+    selected_event = next((event for event in all_events if event["duration"] == duration and event["active"] is True), None)
+
+    if not selected_event:
+        print("No event found for duration")
+        exit(1)
+
+    event_uri = selected_event["uri"]
+    event_id = event_uri.split("/")[-1]
+    return event_id
+
+
+def get_event_slots(event_id, range_in_days: int, duration: int, target_timezone: str, after_hour: t.Optional[int] = None):
     start_day = datetime.datetime.now().strftime("%Y-%m-%d")
     end_day = (datetime.datetime.now() + datetime.timedelta(days=range_in_days)).strftime("%Y-%m-%d")
 
@@ -121,22 +107,54 @@ def human_readable_slot(slot):
     return f"{start_time_str} {timezone_identifier}"
 
 
-available_days = get_event_slots(event_id, schedule_range)
-chosen_slots = []
+# duration = 30
+# schedule_range = 25
 
-for _ in range(events_to_schedule):
-    slots_for_event = []
+# total_slots = 20
+# slots_per_day = 2
+# events_to_schedule = 1
+# # after_hour = 12 + 5
+# after_hour = None
+# target_timezone = "EST"
+# # target_timezone = "America/Denver"
 
-    for day in available_days:
-        slots_left = min(slots_per_day, total_slots - len(slots_for_event), len(day["spots"]))
+# TODO option to exclude weekends
 
-        for _ in range(slots_left):
-            slots_for_event.append(day["spots"].pop())
 
-    chosen_slots.append(slots_for_event)
+def calendly_times(duration, days, timezone, after_hour, total, events, slots_per_day, api_key):
+    global calendly
+    global calendly_user_uri
 
-for event_slots in chosen_slots:
-    for slot in sorted(event_slots, key=lambda slot: slot["start_time"]):
-        print(f"- {human_readable_slot(slot)}")
+    calendly = Calendly(os.getenv("CALENDLY_API_KEY"))
+    calendly_user = calendly.about()
+    calendly_user_uri = calendly_user["resource"]["uri"]
 
-    print("")
+    # self documenting, baby
+    schedule_range_in_days = days
+    number_of_events_to_schedule = events
+    number_of_slots_per_event = total
+
+    event_id = event_id_with_duration(duration)
+    available_days = get_event_slots(event_id, schedule_range_in_days, duration, timezone, after_hour)
+
+    chosen_slots_by_events = []
+    output = ""
+
+    for _ in range(number_of_events_to_schedule):
+        slots_for_event = []
+
+        for day in available_days:
+            slots_left = min(slots_per_day, number_of_slots_per_event - len(slots_for_event), len(day["spots"]))
+
+            for _ in range(slots_left):
+                slots_for_event.append(day["spots"].pop())
+
+        chosen_slots_by_events.append(slots_for_event)
+
+    for event_slots in chosen_slots_by_events:
+        for slot in sorted(event_slots, key=lambda slot: slot["start_time"]):
+            output += f"- {human_readable_slot(slot)}\n"
+
+        output += "\n"
+
+    return output
