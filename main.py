@@ -163,7 +163,7 @@ def calendly_times(duration, days, timezone, after_hour, total, events, slots_pe
     number_of_slots_per_event = total
 
     # not sure why, but "PST" & "CST" are not a valid timezone identifiers either in calendly or python
-    timezone = NICE_TO_UGLY_TIMEZONE_MAPPINGg.get(timezone, timezone)
+    timezone = NICE_TO_UGLY_TIMEZONE_MAPPING.get(timezone, timezone)
 
     event_id = event_id_with_duration(duration)
     available_days = get_event_slots(event_id, schedule_range_in_days, duration, timezone, after_hour)
