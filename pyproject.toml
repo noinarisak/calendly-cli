@@ -12,7 +12,7 @@ python-dotenv = "^0.19.2"
 pytz = "^2022.2"
 
 [tool.poetry.dev-dependencies]
-ipython = "^8.3.0"
+ipython = "^8.4.0"
 ipdb = "^0.13.9"
 colorama = "^0.4.4"
 black = "^22.1.0"
