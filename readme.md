@@ -59,7 +59,7 @@ You can play with the calendly API using [httpie](https://httpie.io) really easi
 ```shell
 source .env
 
-http GET https://api.calendly.com/users/me Authorization:"Bearer $CALENDLY_KEY" Content-Type:application/json
+http GET https://api.calendly.com/users/me Authorization:"Bearer $CALENDLY_API_KEY" Content-Type:application/json
 ```
 
 The `"current_organization"` key contains the org URL which doesn't seem to be exposed in the UI at all (at least on basic accounts).
